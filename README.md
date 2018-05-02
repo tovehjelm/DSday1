@@ -308,7 +308,8 @@ flights_tbl %>%
   dep_delay<500) %>% # takes out the extreme ones
   ggplot(aes(x=val, y=dep_delay)) +
     geom_bin2d() + #heatmap with squaredots
-    facet_wrap(~col, scales = "free") #use the range for the individual column, don't put them on the same scale
+    facet_wrap(~col, scales = "free") + #use the range for the individual column, don't put them on the same scale
+  scale_fill_gradientn(colours = viridisLite::viridis(256, option = "D"))
 ```
 
     ## Applying predicate on the first 100 rows
