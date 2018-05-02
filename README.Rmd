@@ -377,7 +377,7 @@ tidy(glm_unbal)
 Takes the original data and add the prediction and the accosiated error.
 
 ```{r}
-augment(glm_unbal)
+head(augment(glm_unbal))
 ```
 
 Plot predicteds VS actuals
