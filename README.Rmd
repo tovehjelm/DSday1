@@ -189,7 +189,7 @@ flights_tbl %>%
   scale_fill_gradientn(colours = viridisLite::viridis(256, option = "D"))
 ```
 
-###Theory
+### Theory
 We have a highly uneven data where we have a lot more flights that are on time then delayed. Example, if we have 97% not delayed our model  is just going to predict that they are not delayed all the time and get a 97% accuracy. So we need to make it look like we have more delays. 
 
 Options for sampling when dealing with a large class imbalance:
@@ -224,7 +224,7 @@ Packages we can use for sampling:
 - recipes, allows us to upsample and downsample
 - synthpop allows us to build synthesised samples
 
-###Practical
+### Practical
 
 We split the data into training data and test data BEFORE we upsample/downsample/synthesise. We want to keep it CLEAN to be able to evaluate correctly.
 
@@ -280,7 +280,6 @@ basic_fe %>%
           minute, time_hour, day) %>% #1.1
   step_naomit(all_predictors()) %>% 
   step_naomit(all_outcomes()) %>% #1.2
-  #step_corr(all_numeric()) %>% 
   step_zv(all_predictors()) %>%  #1.3
   step_nzv(all_predictors()) %>% #1.4
   step_other(all_nominal(), threshold = 0.03) -> #1.5 
@@ -305,7 +304,7 @@ Now we need to process our numeric variables.
 ```{r}
 colscleaned_fe %>% 
   step_log(distance) %>% 
-  step_rm(tailnum) %>% #1.1
+  step_rm(tailnum, dest) %>% #1.1
 step_num2factor(month, week, hour) -> #1.2
   numscleaned_fe
 
@@ -315,7 +314,7 @@ numscleaned_fe
 train_prep1 <- bake(numscleaned_fe, train_raw)
 ```
 
-###Upsampling
+### Upsampling
 w00t is's upsampling time!
 
 First we need to see what the ratio is now, to see how much we want we to upsample it.This doesn't work now because we changed the varaible to factors, need to look up.  
@@ -339,3 +338,96 @@ numscleaned_fe %>%
 ```
 
 We save the dataset as train_prep2 to be able to compare it with the data that has not been upsampled. 
+
+### Building models
+
+Decide which types of models you want to consider -- perhaps using Microsoft's lovely [cheat sheet] (https://docs.microsoft.com/en-us/azure/machine-learning/studio/media/algorithm-cheat-sheet/machine-learning-algorithm-cheat-sheet-small_v_0_6-01.png). Then determine if you need any special processing to the data beyond what you've done so far. 
+
+Let's begin with glm - genereal linear model
+We want to predict was_delayed by all other variables, it's binomial (because it's only delayed or not delayed) and we want to try using the data from both train_prep1 and train_prep2 to compare the upsampled to the unupsampled data.
+
+```{r}
+
+glm_unbal <- glm(was_delayed ~ .-1, "binomial",data = train_prep1)
+glm_bal <- glm(was_delayed ~ .-1, "binomial", data = train_prep2)
+
+```
+
+Then we can see how these models are constructed and how they perform.
+Adds together the coefficiens of all variable for a specific case. Higher means more likely to be late.
+
+```{r}
+glm_unbal
+```
+
+logLik (log likelihood) is a measure of how gap of what we predicted and what actually happened. 
+
+```{r}
+library(broom)
+glance(glm_unbal)
+```
+
+Get the coefficients.
+
+```{r}
+tidy(glm_unbal)
+
+```
+
+Takes the original data and add the prediction and the accosiated error.
+
+```{r}
+augment(glm_unbal)
+```
+
+Plot predicteds VS actuals
+
+```{r}
+glm_unbal %>% 
+  augment() %>% 
+  ggplot(aes(x=.fitted, group=was_delayed, fill=was_delayed)) +
+  geom_density(alpha =.5) +
+  geom_vline(aes(xintercept=0))
+```
+
+fitted=scored value
+In this model we classify all with logit bigger then 0 we classify as Not delayed, and under 0 we classify as Delayed. We have a lot of overlap, so we have a hard time separating the delayed from the not delayed. Best case scenario would be having the Delayed bump to the left of the intercept and the Not Delayed bump to the right of the intercept. 
+We can also consider where we want our intercept. This effects the number of false positives vs false negatives etc. Depends on business goals.
+
+#### Prep and predict on test data
+
+We rename the scored column to glm_unbal, so that we can compare it to the glm_bal model, otherwise they will both have the column named pred and it's going to complain.
+
+```{r}
+test_raw %>% 
+  bake(numscleaned_fe, .) %>% 
+  modelr::add_predictions(glm_unbal,var="glm_unbal") -> 
+  test_scored
+```
+
+```{r}
+test_scored %>% 
+  ggplot(aes(x=glm_unbal, group=was_delayed, fill=was_delayed)) +
+  geom_density(alpha =.5) +
+  geom_vline(aes(xintercept=0))
+```
+
+But how many did we get right etc?
+
+```{r}
+library(yardstick)
+test_scored %>% 
+  mutate(glm_unbal_class = as.factor(
+    ifelse(glm_unbal<0, "Delayed","Not Delayed"))) %>% 
+  conf_mat(was_delayed, glm_unbal_class)
+```
+
+Let's calculate accuracy
+
+```{r}
+test_scored %>% 
+  mutate(glm_unbal_class=as.factor(
+    ifelse(glm_unbal<0,"Delayed","Not Delayed"))) %>% 
+  accuracy(was_delayed,glm_unbal_class)
+```
+
