@@ -431,3 +431,68 @@ test_scored %>%
   accuracy(was_delayed,glm_unbal_class)
 ```
 
+Glmnet - generate linear model that looks at how to boost performance while reducing the complexity.
+Types of regularization:
+l1
+and
+l2 - you can get absolute 0 values
+
+
+```{r}
+library(glmnetUtils)
+
+glmnet_unbal <- glmnet(was_delayed~.,
+                       train_prep1,
+                       family="binomial",
+                       alpha=0.5, #uses a combination of l1 and l2
+                       intercept = FALSE)
+glmnet_unbal
+```
+
+```{r}
+glance(glmnet_unbal)
+```
+
+```{r}
+plot(glmnet_unbal)
+```
+What level of variance if explained at each step?
+
+```{r}
+glmnet_unbal_cv <- cv.glmnet(was_delayed~.,
+                             train_prep1,
+                             family = "binomial",
+                             alpha = 0.5)
+```
+
+plotting cv 
+The first line gives us the smallest variation of the penilized.
+
+
+```{r}
+plot(glmnet_unbal_cv)
+
+```
+
+The rows with the dots means that those values are not useful for the prediction and have been set to NOT impact the model. 
+Positive - increase the odds of your flight being on time
+Negative - increase the odds of your flight being delayed
+
+```{r}
+coef(glmnet_unbal_cv, s = "lambda.min")
+```
+
+#### Prep and score test data
+```{r}
+test_scored$glmnet_unbal_cv <- as.vector(predict(glmnet_unbal_cv,
+                                                 test_scored, 
+                                                 na.action = na.pass))
+```
+```{r}
+test_scored %>% 
+  ggplot(aes(x=glmnet_unbal_cv, group=was_delayed, fill=was_delayed)) +
+  geom_density(alpha =.5) +
+  geom_vline(aes(xintercept=0))
+```
+
+As we can see it's still not very good, pretty much the same as the previous one. 
